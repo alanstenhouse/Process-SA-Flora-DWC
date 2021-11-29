@@ -72,7 +72,9 @@ tData %>% count(floracode)
 ```
 
 # Process and mapping
-Add some Darwin Core terms with static values for some metadata (and other) fields
+Add some Darwin Core terms with static values for some metadata (and other) fields.
+
+Do we need to include ALL DWC terms here?
 
 ```{r}
 tData %<>% mutate(dwc_language = "en",
@@ -157,12 +159,9 @@ tData %<>% mutate(
   dwc_establishmentMeans = if_else(isindigenousflag == "Y", "native","introduced"),
   
   # Spatial Reference System AGD66 / AMG zone 54 =  EPSG:20254, AGD66 / AMG zone 55 - EPSG:20255
-  # This needs checked!  
- dwc_geodeticDatum = case_when(
-   amgzone == "52" ~ "EPSG:20252",
-   amgzone == "53" ~ "EPSG:20253",
-   amgzone == "54" ~ "EPSG:20254",
-   TRUE ~ ""),
+  # This needs checked!
+  # Think geodetic datum should be AGD66 or 84 - presumably date dependent unless SA has standardised this already.
+  dwc_geodeticDatum = "AGD84",
  
  # coordinate uncertainty
  # This should be calculated but still TBD
