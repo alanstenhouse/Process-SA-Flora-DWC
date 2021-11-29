@@ -187,7 +187,7 @@ Remove already processed columns.
 Drop the "dwc_" prefix.
 Keep any remaining raw columns and view result.
 ```{r}
-tData %<>% select(-c(sightingdate,isindigenousflag,amgzone,spreliabcode,numobserved))
+tData %<>% select(-c(sightingdate,isindigenousflag,amgzone,spreliabcode,numobserved, nsxcode))
 
 colnames(tData) <- str_remove(colnames(tData), "dwc_")
 
