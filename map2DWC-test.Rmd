@@ -195,7 +195,7 @@ tData %>% head()
 ```
 
 ## export as CSV
-We could do this better but good enough for now - saving output in default path.
+We could do this better but good enough for now - saving output data subdirectory.
 ```{r}
 dwc_output = "data/dwc_output.csv"
 write.csv(tData, file = dwc_output, na = "", row.names = FALSE, fileEncoding = "UTF-8")
