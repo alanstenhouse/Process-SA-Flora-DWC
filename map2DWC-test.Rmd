@@ -1,0 +1,203 @@
+---
+title: "ALA-SA-Flora-test"
+author: "Alan Stenhouse"
+date: "25/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# SA Flora test
+
+Testing mapping SA Flora data extract to Darwin Core.
+
+Very useful site which this script has been adapted from:
+https://inbo.github.io/dwc-in-R/dwc-mapping.html
+
+
+## Setup
+
+1. Install any libraries bot already there
+
+```{r}
+installed <- rownames(installed.packages())
+required <- c("tidyverse", "magrittr", "janitor", "lubridate")
+if (!all(required %in% installed)) {
+  install.packages(required[!required %in% installed])
+}
+```
+
+```{r}
+library(tidyverse) # For data transformation (includes dplyr)
+library(magrittr)  # For %<>% pipes
+library(janitor)   # For basic cleaning of the data
+library(lubridate) # date handling
+
+# Set Locale before importing the data
+Sys.setlocale("LC_CTYPE", "en_AU.UTF-8")
+```
+
+## Import Data
+
+```{r}
+inFile <- "data/SA Flora Sample.csv"
+tData <- read.csv(inFile)
+```
+
+
+# Inspect the data
+```{r}
+str(tData)
+```
+```{r}
+head(tData)
+```
+## Clean up column names
+
+```{r}
+tData %<>% clean_names()
+
+```
+
+## Examine some of the input columns
+
+```{r}
+tData %>% distinct(species)
+tData %>% count(dateaccuracy)
+
+tData %>% count(key)
+tData %>% count(floracode)
+```
+
+# Process and mapping
+Add some Darwin Core terms with static values for some metadata (and other) fields
+
+```{r}
+tData %<>% mutate(dwc_language = "en",
+  # license = "http://creativecommons.org/publicdomain/zero/1.0/",
+  dwc_rightsHolder = "South Australia Department of Environment and Water",
+ # dwc_datasetID = "SA Flora Test-AS-2021-11-29",
+  dwc_datasetName = "SA Flora Test",
+  dwc_institutionCode = "SA DEW",
+  dwc_country = "Australia",
+  dwc_countryCode = "AU",
+  dwc_stateProvince = "South Australia",
+  dwc_kingdom = "Plantae",
+  dwc_occurrenceStatus = "present",  # assuming all these sightings are presence records
+  dwc_basisOfRecord = "HumanObservation",
+  
+  ###
+  dwc_verbatimEventDate = sightingdate,
+  dwc_verbatimLatitude = latitude,
+  dwc_verbatimLongitude = longitude,
+  dwc_verbatimCoordinateSystem = "decimal degrees",
+  dwc_verbatimIdentification = species
+  # and anything else...
+  
+) %>% 
+  
+  # map existing where identified
+rename( dwc_scientificName = species, # NB this should be processed and checked using GBIF (or other) parser
+        dwc_family = familyname,
+        dwc_vernacularName = comname1,
+        dwc_catalogNumber = key,
+        dwc_recordNumber = floracode,
+        dwc_otherCatalogNumbers = museumherbmnr,
+        dwc_decimalLatitude = latitude,
+        dwc_decimalLongitude = longitude,
+        dwc_verbatimLocality = locationcomm,
+        dwc_eventRemarks = sightingcomm,
+        dwc_recordedBy = observer,
+        dwc_habitat = habitatcomm
+)
+
+```
+
+## Some columns need transformed
+
+Do we need to transform any of the data? YES.
+
+1. TBD! Species includes sub-species and varieties. Should separate these out but ignore for now.
+
+2. Check dateaccuracy and convert sightingdate to ISO 8601-1:2019 format -> eventDate
+   Possibly have this following old ISO8601 format below, problem with converting dates before 1969.
+
+3. 
+```{r}
+# eventDate
+
+# tData %<>% mutate(eventDate = case_when(
+#     dateaccuracy == "C" ~ format_ISO8601(dmy(sightingdate), precision = "y"), # 2 entries with "C" for Century? but need to clarify this
+#     dateaccuracy == "T" ~ format_ISO8601(dmy(sightingdate), precision = "y"), # 17 entries with "T" = Decade
+#     dateaccuracy == "Y" ~ format_ISO8601(dmy(sightingdate), precision = "y"),
+#     dateaccuracy == "M" ~ format_ISO8601(dmy(sightingdate), precision = "ym"),
+#     dateaccuracy == "D" ~ format_ISO8601(sightingdate), precision = "ymd)",
+#     TRUE ~ format_ISO8601(dmy(sightingdate, precision = "ymd") )
+# ))
+
+
+tData %<>% mutate(
+  # eventDate is dependent on dateaccuracy and sightingdate
+  # NB Here we're just substringing the Century, Decade etc as precision argument for format_ISO8601() does not support these,
+  # and this was referred to as valid format (https://en.wikipedia.org/wiki/ISO_8601#Truncated_representations ) if
+  # agreed upon between parties. So need to check this.
+  # ALSO NB that 2 digit years before 1969 are a problem and entered as 21st C, so need to address this also!
+  # Surely there's a library that already does this??
+  dwc_eventDate = case_when(
+    dateaccuracy == "C" ~ substr(dmy(sightingdate),1,2), # 2 entries with "C", need to clarify this, but enter as CENTURY for now
+    dateaccuracy == "T" ~ substr(dmy(sightingdate),1,3), # 17 entries with "T" = DECADE
+    dateaccuracy == "Y" ~ substr(dmy(sightingdate),1,4),
+    dateaccuracy == "M" ~ substr(dmy(sightingdate),1,7),
+    dateaccuracy == "D" ~ format_ISO8601(dmy(sightingdate), precision = "ymd"),
+    TRUE ~ format_ISO8601(dmy(sightingdate), precision = "ymd") ),
+    
+  # native / introduced / etc
+  dwc_establishmentMeans = if_else(isindigenousflag == "Y", "native","introduced"),
+  
+  # Spatial Reference System AGD66 / AMG zone 54 =  EPSG:20254, AGD66 / AMG zone 55 - EPSG:20255
+  # This needs checked!  
+ dwc_geodeticDatum = case_when(
+   amgzone == "52" ~ "EPSG:20252",
+   amgzone == "53" ~ "EPSG:20253",
+   amgzone == "54" ~ "EPSG:20254",
+   TRUE ~ ""),
+ 
+ # coordinate uncertainty
+ # This should be calculated but still TBD
+ #dwc_coordinateUncertaintyInMeters = calc_uncertainty(reliabdesc)
+
+ 
+ # identification Verification status (from https://hiscom.github.io/hispid/vocabulary/identification_verification_status.xml)
+ dwc_identificationVerificationStatus = if_else(spreliabcode == "Y","verified", "verification required"),
+ 
+ # organism quantity and type
+ dwc_organismQuantity = as.numeric(numobserved),
+   
+ dwc_organismQuantityType = ifelse(!is.na(dwc_organismQuantity),"individuals",NA)
+    # AND SO ON...
+)
+
+
+```
+
+# Post-processing
+Remove already processed columns.
+Drop the "dwc_" prefix.
+Keep any remaining raw columns and view result.
+```{r}
+tData %<>% select(-c(sightingdate,isindigenousflag,amgzone,spreliabcode,numobserved))
+
+colnames(tData) <- str_remove(colnames(tData), "dwc_")
+
+tData %>% head()
+```
+
+## export as CSV
+We could do this better but good enough for now - saving output in default path.
+```{r}
+dwc_output = "data/dwc_output.csv"
+write.csv(tData, file = dwc_output, na = "", row.names = FALSE, fileEncoding = "UTF-8")
+```
+
